@@ -10,12 +10,14 @@ options {
     #include <string>
     #include <cstdlib>
     #include "C8086Lexer.h"
-	#include "str_list.cpp"
+    #include "str_list.cpp"
+    #include "SymbolTable.hpp"
 
     extern std::ofstream parserLogFile;
     extern std::ofstream errorFile;
 
     extern int syntaxErrorCount;
+    extern SymbolTable* symbolTable;
 }
 
 @parser::members {
@@ -37,61 +39,89 @@ options {
         errorFile << message << std::endl;
         errorFile.flush();
     }
+
+    template<typename CTX>
+    void logRule(CTX* ctx, const std::string& ruleDesc) {
+        writeIntoparserLogFile(
+            "Line " + std::to_string(ctx->getStart()->getLine()) + ": " + ruleDesc);
+        writeIntoparserLogFile(ctx->getText());
+    }
 }
 
 
 start : program
-	{
-        writeIntoparserLogFile("Parsing completed successfully with " + std::to_string(syntaxErrorCount) + " syntax errors.");
-	}
-	;
+        {
+            logRule(_localctx, "start : program");
+            writeIntoparserLogFile("Parsing completed successfully with " + std::to_string(syntaxErrorCount) + " syntax errors.");
+        }
+        ;
 
-program : program unit 
-	| unit
-	;
+program
+    : program unit
+        { logRule(_localctx, "program : program unit"); }
+    | unit
+        { logRule(_localctx, "program : unit"); }
+    ;
 	
-unit : var_declaration
-     | func_declaration
-     | func_definition
-     ;
+unit
+    : var_declaration     { logRule(_localctx, "unit : var_declaration"); }
+    | func_declaration    { logRule(_localctx, "unit : func_declaration"); }
+    | func_definition     { logRule(_localctx, "unit : func_definition"); }
+    ;
      
-func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON
-		| type_specifier ID LPAREN RPAREN SEMICOLON
-		;
-		 
-func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement
-		| type_specifier ID LPAREN RPAREN compound_statement
- 		;				
+func_declaration
+    : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON
+        { logRule(_localctx, "func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON"); }
+    | type_specifier ID LPAREN RPAREN SEMICOLON
+        { logRule(_localctx, "func_declaration : type_specifier ID LPAREN RPAREN SEMICOLON"); }
+    ;
+
+func_definition
+    : type_specifier ID LPAREN parameter_list RPAREN compound_statement
+        { logRule(_localctx, "func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement"); }
+    | type_specifier ID LPAREN RPAREN compound_statement
+        { logRule(_localctx, "func_definition : type_specifier ID LPAREN RPAREN compound_statement"); }
+    ;
 
 
-parameter_list  : parameter_list COMMA type_specifier ID
-		| parameter_list COMMA type_specifier
- 		| type_specifier ID
-		| type_specifier
- 		;
+parameter_list
+    : parameter_list COMMA type_specifier ID
+        { logRule(_localctx, "parameter_list : parameter_list COMMA type_specifier ID"); }
+    | parameter_list COMMA type_specifier
+        { logRule(_localctx, "parameter_list : parameter_list COMMA type_specifier"); }
+    | type_specifier ID
+        { logRule(_localctx, "parameter_list : type_specifier ID"); }
+    | type_specifier
+        { logRule(_localctx, "parameter_list : type_specifier"); }
+    ;
 
  		
-compound_statement : LCURL statements RCURL
- 		    | LCURL RCURL
- 		    ;
+compound_statement
+    : LCURL { symbolTable->enter_scope(); } statements RCURL
+        {
+            symbolTable->print_current_scope_table(parserLogFile);
+            symbolTable->exit_scope();
+            logRule(_localctx, "compound_statement : LCURL statements RCURL");
+        }
+    | LCURL { symbolTable->enter_scope(); } RCURL
+        {
+            symbolTable->print_current_scope_table(parserLogFile);
+            symbolTable->exit_scope();
+            logRule(_localctx, "compound_statement : LCURL RCURL");
+        }
+    ;
  		    
-var_declaration 
-    : t=type_specifier dl=declaration_list sm=SEMICOLON {
-        writeIntoparserLogFile(
-            std::string("Variable Declaration: type_specifier declaration_list ") +
-            std::to_string($sm->getType()) +
-            " at line " + std::to_string($sm->getLine())
-        );
-
-        writeIntoparserLogFile("type_specifier name_line: " + $t.name_line);
+var_declaration
+    : t=type_specifier dl=declaration_list SEMICOLON {
+        for (const auto& v : $dl.var_list.get_variables()) {
+            symbolTable->insert_into_current_scope(v, "ID");
+        }
+        logRule(_localctx, "var_declaration : type_specifier declaration_list SEMICOLON");
       }
-
-    | t=type_specifier de=declaration_list_err sm=SEMICOLON {
+    | t=type_specifier de=declaration_list_err SEMICOLON {
         writeIntoErrorFile(
-            std::string("Line# ") + std::to_string($sm->getLine()) +
-            " with error name: " + $de.error_name +
-            " - Syntax error at declaration list of variable declaration"
-        );
+            std::string("Line# ") + std::to_string($SEMICOLON->getLine()) +
+            " with error name: " + $de.error_name);
         syntaxErrorCount++;
       }
     ;
@@ -101,38 +131,38 @@ declaration_list_err returns [std::string error_name]: {
     };
 
  		 
-type_specifier returns [std::string name_line]	
+type_specifier returns [std::string name_line]
         : INT {
             $name_line = "type: INT at line" + std::to_string($INT->getLine());
+            logRule(_localctx, "type_specifier : INT");
         }
- 		| FLOAT {
+        | FLOAT {
             $name_line = "type: FLOAT at line" + std::to_string($FLOAT->getLine());
+            logRule(_localctx, "type_specifier : FLOAT");
         }
- 		| VOID {
+        | VOID {
             $name_line = "type: VOID at line" + std::to_string($VOID->getLine());
+            logRule(_localctx, "type_specifier : VOID");
         }
- 		;
+        ;
 // declaration_list : declaration_list COMMA ID
 //                   | declaration_list COMMA ID LTHIRD CONST_INT RTHIRD
 //                   | ID
 // 					 | ID LTHIRD CONST_INT RTHIRD
 
-declaration_list returns [str_list var_list] : dl=declaration_list {writeIntoparserLogFile("list before: " + $dl.var_list.get_list_as_string() + " size: " + $dl.var_list.size());} COMMA ID 
-			{
-				$var_list.set_variables($dl.var_list.get_variables());
-				$var_list.add($ID->getText());
-
-				writeIntoparserLogFile("Added variable: " + $ID->getText() + " to declaration list at line " + std::to_string($ID->getLine()));
-				writeIntoparserLogFile("list after: " + $var_list.get_list_as_string());
-			}
- 		  | declaration_list COMMA ID LTHIRD CONST_INT RTHIRD
- 		  | ID 
-		  	{
-				writeIntoparserLogFile("Catching the first variable: " + $ID->getText() + " at line " + std::to_string($ID->getLine()));
-				$var_list.add($ID->getText());
-			}
- 		  | ID LTHIRD CONST_INT RTHIRD
- 		  ;
+declaration_list returns [str_list var_list]
+    : dl=declaration_list COMMA ID
+        {
+            $var_list.set_variables($dl.var_list.get_variables());
+            $var_list.add($ID->getText());
+            logRule(_localctx, "declaration_list : declaration_list COMMA ID");
+        }
+    | ID
+        {
+            $var_list.add($ID->getText());
+            logRule(_localctx, "declaration_list : ID");
+        }
+    ;
  		  
 statements : statement
 	   | statements statement

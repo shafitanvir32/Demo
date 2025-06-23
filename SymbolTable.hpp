@@ -103,22 +103,20 @@ public:
         return nullptr;
     }
 
-    void print_current_scope_table() const
+    void print_current_scope_table(std::ostream& out = std::cout) const
     {
-        current_scopetable->print_scope_table(1);
+        current_scopetable->print_scope_table(out);
     }
 
-    void print_all_scope_tables() const
+    void print_all_scope_tables(std::ostream& out = std::cout) const
     {
         ScopeTable* curr = current_scopetable;
-        int i=1;
         while(curr != nullptr)
         {
-            curr->print_scope_table(i);
+            curr->print_scope_table(out);
             curr = curr->parent_scope;
-            i++;
         }
-        cout << endl;
+        out << std::endl;
     }
 };
 
