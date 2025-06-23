@@ -161,23 +161,22 @@ bool insert(const string& name, const string& type, bool verbose = false)
         return true;
     }
 
-void print_scope_table(int indent) {
-    // Print ScopeTable header (no tabs)
-    cout << "ScopeTable # 1";
-    for (int i = 1; i < this->id; i++) {
-        cout << ".1";
+void print_scope_table(std::ostream& out = std::cout) const {
+    out << "ScopeTable # 1";
+    if (id > 1) {
+        out << '.' << id;
     }
-    cout << endl;
+    out << std::endl;
     for (int i = 0; i < number_of_buckets; i++) {
         SymbolInfo* curr = hash_table[i];
-        if (curr == NULL) continue; // Only print non-empty buckets
+        if (curr == nullptr) continue;
 
-        cout << i << " --> ";
-        while (curr != NULL) {
-            cout << "< " << curr->get_name() << " : " << curr->get_type() << " >";
+        out << i << " --> ";
+        while (curr != nullptr) {
+            out << "< " << curr->get_name() << " : " << curr->get_type() << " >";
             curr = curr->next;
         }
-        cout << endl;
+        out << std::endl;
     }
 }
 
